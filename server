@@ -1,0 +1,63 @@
+from socket import *  # подключаем библиотеку socket
+
+def Socket(af,prt):
+    # создаем tcp server
+    try:
+        SerSock = socket(af, prt)
+        print("Создан сокет сервера")
+        return SerSock
+    except error:
+        print("Ошибка создания сокета сервера!")
+
+def Bind(SerSock,ADDR):
+    try:
+        SerSock.bind(ADDR)
+        print("Привязка прошла успешно!")
+        return SerSock
+    except error:
+        print("Ошибка привязки адреса!")
+
+def Listen(SerSock,number):
+    try:
+        SerSock.listen(number)
+        print("Прослушиваем...")
+        return SerSock
+    except error:
+        print("Ошибка прослушивания")
+
+def Accept (tcpSerSock):
+    try:
+        return tcpSerSock.accept()
+    except error:
+        print("Ошибка принятия подключения")
+
+HOST = '127.0.0.1'
+PORT = 3000
+ADDR = (HOST, PORT)
+BUFSIZE = 1024
+
+# создаем tcp server
+tcpSerSock = Socket(AF_INET, SOCK_STREAM)
+# устанавливаем привязку адреса
+tcpSerSock = Bind(tcpSerSock, ADDR)
+# устанавливаем и запускаем приемник tcp
+tcpSerSock = Listen(tcpSerSock, 5)
+# сделаем чтобы сервер выводил текст клиента
+# ожидаем подключения клиента
+tcpCliSock, addr = Accept(tcpSerSock)
+# принимаем название файла от клиента
+file_name = tcpCliSock.recv(BUFSIZE).decode()
+f = open('server_files/' + file_name, 'wb')
+
+while True:
+    taken_data = tcpCliSock.recv(BUFSIZE)
+
+    if not taken_data:
+        break
+
+    # записываем в файл информацию от client
+    f.write(taken_data)
+
+# после того, как мы получили, закрываем соединение
+tcpCliSock.close()
+tcpSerSock.close()
