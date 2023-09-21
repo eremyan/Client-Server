@@ -1,0 +1,29 @@
+from socket import *  # подключаем библиотеку socket
+import os # импортируем библиотеку os
+
+HOST = '127.0.0.1'
+PORT = 3000
+ADDR = (HOST,PORT)
+BUFSIZE = 1024
+
+# создаем tcp client
+tcpCliSock = socket(AF_INET, SOCK_STREAM)
+# в client.py подкючаемся к серверу
+tcpCliSock.connect(ADDR)
+
+# отправим серверу название файла
+file_name = input('Enter file name: ')
+tcpCliSock.send(file_name.encode())
+# открываем файл
+f = open('client_files/' + file_name, 'rb')
+
+send_data = ''
+
+while send_data != b'':
+    # считываем содержимое файла в data
+    send_data = f.read(BUFSIZE)
+    tcpCliSock.send(send_data)
+
+
+# отсылаем на сервер hello, encode переводит в байты
+tcpCliSock.send('HELLO'.encode())
