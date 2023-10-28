@@ -1,63 +1,197 @@
-from socket import *  # подключаем библиотеку socket
+import os
+from socket import *
+from threading import *  # потоки
 
-def Socket(af,prt):
-    # создаем tcp server
-    try:
-        SerSock = socket(af, prt)
-        print("Создан сокет сервера")
-        return SerSock
-    except error:
-        print("Ошибка создания сокета сервера!")
 
-def Bind(SerSock,ADDR):
-    try:
-        SerSock.bind(ADDR)
-        print("Привязка прошла успешно!")
-        return SerSock
-    except error:
-        print("Ошибка привязки адреса!")
-
-def Listen(SerSock,number):
-    try:
-        SerSock.listen(number)
-        print("Прослушиваем...")
-        return SerSock
-    except error:
-        print("Ошибка прослушивания")
-
-def Accept (tcpSerSock):
-    try:
-        return tcpSerSock.accept()
-    except error:
-        print("Ошибка принятия подключения")
-
-HOST = '127.0.0.1'
-PORT = 3000
-ADDR = (HOST, PORT)
+server_directory = 'E:\python\server_files\\' # путь для функции ls
+LOCALHOST = "127.0.0.1"  # ip моего устройства
+PORT = 1488  # порт используемый для подключения
 BUFSIZE = 1024
 
-# создаем tcp server
-tcpSerSock = Socket(AF_INET, SOCK_STREAM)
-# устанавливаем привязку адреса
-tcpSerSock = Bind(tcpSerSock, ADDR)
-# устанавливаем и запускаем приемник tcp
-tcpSerSock = Listen(tcpSerSock, 5)
-# сделаем чтобы сервер выводил текст клиента
-# ожидаем подключения клиента
-tcpCliSock, addr = Accept(tcpSerSock)
-# принимаем название файла от клиента
-file_name = tcpCliSock.recv(BUFSIZE).decode()
-f = open('server_files/' + file_name, 'wb')
+# переменные для определения количества клиентов
+num_client = 0
+max_num_client = 3
+global server
+global clientsock, clientAddress
+# 1 разворачиваем сервер
+# создаем сокет сервера
+try:
+    server = socket(AF_INET, SOCK_STREAM)
+    server.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+except error:
+    print("Ошибка создания сокета сервера!")
 
+
+# привязка адреса к сокету
+try:
+    server.bind((LOCALHOST, PORT))
+    print("Сервер запущен")
+except error:
+    print("Ошибка привязки адреса!")
+
+def ls(self):
+    with os.scandir(server_directory) as files:  # отправка каталогов
+        subdir = [direc.name for direc in files if direc.is_dir()]
+    self.csocket.send(bytes(f"Список каталогов: {subdir}", "UTF-8"))
+
+    with os.scandir(server_directory) as files:  # отправка файлов каталога сервера
+        files = [file.name for file in files if file.is_file()]
+    self.csocket.send(bytes(f"Список файлов: {files}", "UTF-8"))
+class ClientThread(Thread):
+
+    # инициализируем новое подключение
+    def __init__(self, clientAddress, clientsocket):
+        Thread.__init__(self)  # наследование классов
+        self.csocket = clientsocket
+        print("Новое подключение: ", clientAddress)
+        self.csocket.send("Авторизоваться - команда a"
+                          "\nВыйти - команда ex".encode())
+        # проверка достигнуто ли максимальное количество клиентов
+        if num_client > max_num_client:
+            self.csocket.send("\nОшибка: Достигнуто максимальное кол-во клиентов".encode())
+
+    # Обработка полученных сообщений от клиентов
+    def run(self):
+
+        global num_client  # позволяет менять глобальную переменную в функции
+        msg = ''
+        while True:
+            msg = self.csocket.recv(4096).decode()
+            print(msg)
+            if msg == "a":  # процедура аутентификации
+                # здесь должна быть функция аутентификации
+                self.csocket.send("Введите логин: ".encode())
+                login = self.csocket.recv(4096).decode()
+                self.csocket.send("Введите пароль: ".encode())
+                passw = self.csocket.recv(4096).decode()
+                #login = input("Введите логин: ")
+                #passw = input("Введите пароль: ")
+                s = login + ":" + passw + "\n"
+                auth = False
+                password_list = "server_files/passw"
+                pl = open(password_list, "r")
+                while True:
+                    line = pl.readline()
+                    if s == line and s != b"":
+                        auth = True
+                        break
+                    if not line:
+                        break
+                if auth:
+                    self.csocket.send("Аутентификация прошла успешно!".encode())
+                    pl.close()
+                    # функции пользователя
+                    while True:
+                        msg = self.csocket.recv(4096).decode()
+                        if msg == "h":  # процедура получения справки
+                            self.csocket.send("\n"
+                                              ""
+                                              "gF - передача файла\n"
+                                              "ls - просмотр содержимого каталогов\n"
+                                              "h - получение справки\n"
+                                              "ex - выход".encode())
+                        elif msg == "gF":  # процедура отправки файла клиенту
+                            # предупреждение клиента о начале процедуры передачи файла
+                            self.csocket.send("Передача файла".encode())
+                            # принимаем название файла
+                            file_name = self.csocket.recv(BUFSIZE).decode()
+                            # определяем размер запрошенного файла
+                            file_size = os.path.getsize('server_files/' + file_name)
+
+                            # Процедура протоколирования
+                            # открываем файл в режиме дописывания
+                            lg = open('server_files\log_file', 'a')
+                            lg.write(file_name + ":" + str(file_size) + "\n")
+                            lg.close()
+                            # конкретно процедура отправки файла
+                            f = open('server_files/' + file_name, 'rb')
+
+                            send_data = ''
+
+                            while send_data != b'':
+                                # считываем содержимое файла в data
+                                send_data = f.read(BUFSIZE)
+                                self.csocket.send(send_data)
+
+                        elif msg == "ex":
+                            print("Отключение", clientAddress)
+                            break
+                        elif msg == "ls":  # просмотр содержимого каталогов сервера
+                            ls(self)
+                        else:
+                            self.csocket.send("Такой команды нет!".encode())
+                else:
+                    self.csocket.send("Неверный логин или пароль!".encode())
+                    pl.close()
+            elif msg == "ex":
+                print("Отключение", clientAddress)
+                break
+            else:
+                self.csocket.send("Такой команды нет!".encode())
+                # было сдвинуто на 1 отступ
+            # elif msg == "help":  # помощь
+            # self.csocket.send(bytes(f"help - получить справку\nauth - авторизоваться\ngetFile - получить файл\nls - список файлов и каталогов", "UTF-8"))
+            # elif msg == "auth":  # аутентификация
+            #    self.csocket.send(bytes("Введите логин: ", "UTF-8"))
+            #    data = self.csocket.recv(4096)
+            #    msg1 = data.decode()
+            #    self.csocket.send(bytes("Введите пароль: ", "UTF-8"))
+            #   data = self.csocket.recv(4096)
+            #   msg2 = data.decode()
+            #   for j in range(6):
+            #       login_, psw_ = loginPass[j]
+            #       if msg1 == login_ and msg2 == psw_:
+            #           vhod = 1
+            #           break
+            #       else:
+            #           vhod = 0
+            #   if vhod == 1:
+            #       self.csocket.send(bytes("Вы успешно вошли! ", "UTF-8"))
+            #    else:
+            #        self.csocket.send(bytes("Неверный логин или пароль", "UTF-8"))
+            # elif msg == "ls":
+            #    ls(self)
+            # elif msg == "getFile":
+            #    #self.csocket.send(bytes(f"Введите имя файла: ", "UTF-8"))
+            #    #src = self.csocket.recv(4096).decode()
+            #    #src = "D:\pythonProject\Server\\" + src
+
+            #   #self.csocket.send(bytes(f"Введите путь для копирования: ", "UTF-8"))
+            #   #dst = self.csocket.recv(4096).decode()
+
+            #   #shutil.copyfile(src, dst)
+            #   # отправим серверу название файла
+            #   file_name = 'mgfkuj'
+            #   # size file
+            #    file_size = os.path.getsize(server_directory + file_name)
+            #    print(file_size)
+            #    self.csocket.send(file_name.encode())
+            #    # открываем файл
+            #    f = open(server_directory + file_name, 'rb')
+
+            #   send_data = ''
+
+            #    while send_data != b'':
+                    # считываем содержимое файла в data
+            #        send_data = f.read(BUFSIZE)
+            #        self.csocket.send(send_data)
+            # else:
+            #    self.csocket.send(bytes("Такой команды нет!", "UTF-8"))
+        num_client = num_client - 1  # контроль выхода клиента, для допустимого кол-ва клиентов
+        # print(num_client)
+        self.csocket.close()
+# принимаем подключение клиента
 while True:
-    taken_data = tcpCliSock.recv(BUFSIZE)
-
-    if not taken_data:
-        break
-
-    # записываем в файл информацию от client
-    f.write(taken_data)
-
-# после того, как мы получили, закрываем соединение
-tcpCliSock.close()
-tcpSerSock.close()
+    try:
+        server.listen(1)
+    except error:
+        print("Ошибка прослушивания")
+    try:
+        clientsock, clientAddress = server.accept()  # принятие подключения клиента
+    except error:
+        print("Ошибка принятия подключения")
+    # создаем отдельный поток для подключившегося клиента
+    newthread = ClientThread(clientAddress, clientsock)
+    newthread.start()
+    num_client = num_client + 1
+    # print(num_client)
