@@ -1,29 +1,53 @@
-from socket import *  # подключаем библиотеку socket
-import os # импортируем библиотеку os
+from socket import *
+from threading import *  # потоки
 
-HOST = '127.0.0.1'
-PORT = 3000
-ADDR = (HOST,PORT)
+SERVER = "127.0.0.1"  # ip моего устройства
+PORT = 1488  # порт используемый для подключения
 BUFSIZE = 1024
+global client
+try:
+    client = socket(AF_INET, SOCK_STREAM)  # сокет для связи по протоколу TCP
+except error:
+    print("Ошибка создания сокета клиента")
+try:
+    client.connect((SERVER, PORT))
+except error:
+    print("Ошибка подключения к серверу со стороны клиента")
 
-# создаем tcp client
-tcpCliSock = socket(AF_INET, SOCK_STREAM)
-# в client.py подкючаемся к серверу
-tcpCliSock.connect(ADDR)
+# для принятия
+def task():
+    while True:
+        in_data = client.recv(4096).decode()
+        if in_data == "Передача файла":
+            file_name = input("Введите название файла: ")
+            client.send(file_name.encode())
+            f = open('client_files/' + file_name, 'wb')
 
-# отправим серверу название файла
-file_name = input('Enter file name: ')
-tcpCliSock.send(file_name.encode())
-# открываем файл
-f = open('client_files/' + file_name, 'rb')
-
-send_data = ''
-
-while send_data != b'':
-    # считываем содержимое файла в data
-    send_data = f.read(BUFSIZE)
-    tcpCliSock.send(send_data)
+            while True:
+                taken_data = client.recv(BUFSIZE)
+                print(taken_data)
+                # записываем в файл информацию от server
+                f.write(taken_data)
+                f.close()
+                break
+        else:
+            if in_data != '':
+                print("От сервера: ", in_data)
 
 
-# отсылаем на сервер hello, encode переводит в байты
-tcpCliSock.send('HELLO'.encode())
+# Для отправления
+def task2():
+    while True:
+        out_data = input()
+        client.sendall(bytes(out_data, "UTF-8"))
+        print("Отправлено: " + str(out_data))
+
+# потоки для одновременного принятия и отправления
+t1 = Thread(target=task2)
+t2 = Thread(target=task)
+
+t1.start()
+t2.start()
+
+t1.join()
+t2.join()
