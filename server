@@ -28,27 +28,75 @@ try:
     print("Сервер запущен")
 except error:
     print("Ошибка привязки адреса!")
+def getFile(self):
+    self.csocket.send("Enter the file name: ".encode())
+    # принимаем название файла
+    file_name = self.csocket.recv(BUFSIZE).decode()
+    # проверяем наличие файла
+    if not os.path.isfile("server_files/" + file_name):
+        self.csocket.send("There is no such file!".encode())
+    else:
+        # процедура отправки файла клиенту
+        # предупреждение клиента о начале процедуры передачи файла
+        self.csocket.send("Передача файла".encode())
+        # определяем размер запрошенного файла
+        file_size = os.path.getsize('server_files/' + file_name)
 
+        # Процедура протоколирования
+        # открываем файл в режиме дописывания
+        lg = open('server_files\log_file', 'a')
+        lg.write(file_name + ":" + str(file_size) + "\n")
+        lg.close()
+        # конкретно процедура отправки файла
+        f = open('server_files/' + file_name, 'rb')
+
+        send_data = ''
+
+        while send_data != b'':
+
+            # считываем содержимое файла в data
+            send_data = f.read(BUFSIZE)
+            self.csocket.send(send_data)
 def ls(self):
-    with os.scandir(server_directory) as files:  # отправка каталогов
-        subdir = [direc.name for direc in files if direc.is_dir()]
-    self.csocket.send(bytes(f"Список каталогов: {subdir}", "UTF-8"))
 
-    with os.scandir(server_directory) as files:  # отправка файлов каталога сервера
+    self.csocket.send("The directory you want to view is the current one?(no): ".encode())
+    s = self.csocket.recv(4096).decode()
+
+    child_directory = server_directory
+    if (s == "no"):
+
+        self.csocket.send("Enter path: ".encode())
+        child_directory = self.csocket.recv(4096).decode()
+
+        child_directory = server_directory + child_directory
+    with os.scandir(child_directory) as files:  # отправка каталогов
+        subdir = [direc.name for direc in files if direc.is_dir()]
+    self.csocket.send(bytes(f"directory list: {subdir}", "UTF-8"))
+
+
+    with os.scandir(child_directory) as files: # отправка файлов каталога сервера
         files = [file.name for file in files if file.is_file()]
-    self.csocket.send(bytes(f"Список файлов: {files}", "UTF-8"))
+    self.csocket.send(bytes(f"List of files: {files}", "UTF-8"))
+def help(self):
+    # процедура получения справки
+    self.csocket.send("\n"
+                      ""
+                      "getFile - file transfer\n"
+                      "ls - viewing the contents of directories\n"
+                      "help - getting help\n"
+                      "exit - exit".encode())
 class ClientThread(Thread):
 
     # инициализируем новое подключение
     def __init__(self, clientAddress, clientsocket):
         Thread.__init__(self)  # наследование классов
         self.csocket = clientsocket
-        print("Новое подключение: ", clientAddress)
-        self.csocket.send("Авторизоваться - команда a"
-                          "\nВыйти - команда ex".encode())
+        print("New connection: ", clientAddress)
+        self.csocket.send("Log in - command auth"
+                          "\nExit - command exit".encode())
         # проверка достигнуто ли максимальное количество клиентов
         if num_client > max_num_client:
-            self.csocket.send("\nОшибка: Достигнуто максимальное кол-во клиентов".encode())
+            self.csocket.send("\nError: The maximum number of clients has been reached".encode())
 
     # Обработка полученных сообщений от клиентов
     def run(self):
@@ -58,14 +106,12 @@ class ClientThread(Thread):
         while True:
             msg = self.csocket.recv(4096).decode()
             print(msg)
-            if msg == "a":  # процедура аутентификации
+            if msg == "auth":  # процедура аутентификации
                 # здесь должна быть функция аутентификации
-                self.csocket.send("Введите логин: ".encode())
+                self.csocket.send("Input login: ".encode())
                 login = self.csocket.recv(4096).decode()
-                self.csocket.send("Введите пароль: ".encode())
+                self.csocket.send("Input password: ".encode())
                 passw = self.csocket.recv(4096).decode()
-                #login = input("Введите логин: ")
-                #passw = input("Введите пароль: ")
                 s = login + ":" + passw + "\n"
                 auth = False
                 password_list = "server_files/passw"
@@ -78,107 +124,31 @@ class ClientThread(Thread):
                     if not line:
                         break
                 if auth:
-                    self.csocket.send("Аутентификация прошла успешно!".encode())
+                    self.csocket.send("Authentication was successful!".encode())
                     pl.close()
                     # функции пользователя
                     while True:
                         msg = self.csocket.recv(4096).decode()
-                        if msg == "h":  # процедура получения справки
-                            self.csocket.send("\n"
-                                              ""
-                                              "gF - передача файла\n"
-                                              "ls - просмотр содержимого каталогов\n"
-                                              "h - получение справки\n"
-                                              "ex - выход".encode())
-                        elif msg == "gF":  # процедура отправки файла клиенту
-                            # предупреждение клиента о начале процедуры передачи файла
-                            self.csocket.send("Передача файла".encode())
-                            # принимаем название файла
-                            file_name = self.csocket.recv(BUFSIZE).decode()
-                            # определяем размер запрошенного файла
-                            file_size = os.path.getsize('server_files/' + file_name)
-
-                            # Процедура протоколирования
-                            # открываем файл в режиме дописывания
-                            lg = open('server_files\log_file', 'a')
-                            lg.write(file_name + ":" + str(file_size) + "\n")
-                            lg.close()
-                            # конкретно процедура отправки файла
-                            f = open('server_files/' + file_name, 'rb')
-
-                            send_data = ''
-
-                            while send_data != b'':
-                                # считываем содержимое файла в data
-                                send_data = f.read(BUFSIZE)
-                                self.csocket.send(send_data)
-
-                        elif msg == "ex":
-                            print("Отключение", clientAddress)
+                        if msg == "help":
+                            help(self)
+                        elif msg == "getFile":
+                            getFile(self)
+                        elif msg == "exit":
+                            print("Disabling", clientAddress)
                             break
                         elif msg == "ls":  # просмотр содержимого каталогов сервера
                             ls(self)
                         else:
-                            self.csocket.send("Такой команды нет!".encode())
+                            self.csocket.send("There is no such command!".encode())
                 else:
-                    self.csocket.send("Неверный логин или пароль!".encode())
+                    self.csocket.send("Invalid username or password!".encode())
                     pl.close()
-            elif msg == "ex":
-                print("Отключение", clientAddress)
+            elif msg == "exit":
+                print("Disabling", clientAddress)
                 break
             else:
-                self.csocket.send("Такой команды нет!".encode())
-                # было сдвинуто на 1 отступ
-            # elif msg == "help":  # помощь
-            # self.csocket.send(bytes(f"help - получить справку\nauth - авторизоваться\ngetFile - получить файл\nls - список файлов и каталогов", "UTF-8"))
-            # elif msg == "auth":  # аутентификация
-            #    self.csocket.send(bytes("Введите логин: ", "UTF-8"))
-            #    data = self.csocket.recv(4096)
-            #    msg1 = data.decode()
-            #    self.csocket.send(bytes("Введите пароль: ", "UTF-8"))
-            #   data = self.csocket.recv(4096)
-            #   msg2 = data.decode()
-            #   for j in range(6):
-            #       login_, psw_ = loginPass[j]
-            #       if msg1 == login_ and msg2 == psw_:
-            #           vhod = 1
-            #           break
-            #       else:
-            #           vhod = 0
-            #   if vhod == 1:
-            #       self.csocket.send(bytes("Вы успешно вошли! ", "UTF-8"))
-            #    else:
-            #        self.csocket.send(bytes("Неверный логин или пароль", "UTF-8"))
-            # elif msg == "ls":
-            #    ls(self)
-            # elif msg == "getFile":
-            #    #self.csocket.send(bytes(f"Введите имя файла: ", "UTF-8"))
-            #    #src = self.csocket.recv(4096).decode()
-            #    #src = "D:\pythonProject\Server\\" + src
-
-            #   #self.csocket.send(bytes(f"Введите путь для копирования: ", "UTF-8"))
-            #   #dst = self.csocket.recv(4096).decode()
-
-            #   #shutil.copyfile(src, dst)
-            #   # отправим серверу название файла
-            #   file_name = 'mgfkuj'
-            #   # size file
-            #    file_size = os.path.getsize(server_directory + file_name)
-            #    print(file_size)
-            #    self.csocket.send(file_name.encode())
-            #    # открываем файл
-            #    f = open(server_directory + file_name, 'rb')
-
-            #   send_data = ''
-
-            #    while send_data != b'':
-                    # считываем содержимое файла в data
-            #        send_data = f.read(BUFSIZE)
-            #        self.csocket.send(send_data)
-            # else:
-            #    self.csocket.send(bytes("Такой команды нет!", "UTF-8"))
+                self.csocket.send("There is no such command!".encode())
         num_client = num_client - 1  # контроль выхода клиента, для допустимого кол-ва клиентов
-        # print(num_client)
         self.csocket.close()
 # принимаем подключение клиента
 while True:
@@ -194,4 +164,3 @@ while True:
     newthread = ClientThread(clientAddress, clientsock)
     newthread.start()
     num_client = num_client + 1
-    # print(num_client)
